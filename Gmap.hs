@@ -5,7 +5,9 @@ module Gmap where
 
 import Unsafe.Coerce (unsafeCoerce)
 
+-- =============================================================================
 -- Data Structures
+-- =============================================================================
 
 data Company    = C [Dept]
 data Dept       = D Name Manager [SubUnit]
@@ -34,7 +36,10 @@ instance Show Salary where
     show (S salary) = show salary
 
 genCom :: Company
-genCom = C [D "Research" ralf [PU joost, PU marlow, DU (D "Science" joost [])], D "Strategy" blair []] 
+genCom = C [
+    D "Research" ralf [PU joost, PU marlow, DU (D "Science" joost [])], 
+    D "Strategy" blair []
+    ] 
 
 ralf, joost, marlow, blair :: Employee
 ralf = E (P "Ralf" "Amsterdam") (S 8000)
@@ -42,6 +47,7 @@ joost = E (P "Joost" "Amsterdam") (S 1000)
 marlow = E (P "Marlow" "Cambridge") (S 2000)
 blair = E (P "Blair" "London") (S 100000)
 
+-- an example of increase without using generic programming
 increase :: Float -> Company -> Company
 increase k (C ds) = C (map (incD k) ds)
 
@@ -55,7 +61,9 @@ incE k (E p s) = E p (incS k s)
 incS :: Float -> Salary -> Salary
 incS k (S s) = S (s * (1+k))
 
+-- =============================================================================
 -- Typeable Class
+-- =============================================================================
 
 class Typeable a where
     typeOf :: a -> TypeRep
@@ -96,7 +104,8 @@ instance (Typeable a, Typeable b) => Typeable (a -> b) where
             getArg = undefined
             getRes :: (a->b) -> b
             getRes = undefined
-    
+
+-- type casting function
 cast :: (Typeable a, Typeable b) => a -> Maybe b
 cast x = r
     where
@@ -106,18 +115,9 @@ cast x = r
         get :: Maybe a -> a
         get x = undefined
 
--- Generic Transformations
-
-increase' :: Float -> Company -> Company
-increase' k = everywhere (mkT (incS k))
-
-mkT :: (Typeable a, Typeable b) => (b -> b) -> a -> a
-mkT f = case cast f of 
-            Just g -> g
-            Nothing -> id
-
-inc :: Typeable a => Float -> a -> a
-inc k = mkT (incS k)
+-- =============================================================================
+-- Term Class
+-- =============================================================================
 
 class Typeable a => Term a where
     gmapT :: (forall b. Term b => b -> b) -> a -> a
@@ -202,6 +202,18 @@ instance Term a => Term [a] where
             xs' <- f xs
             return (x':xs')
 
+-- =============================================================================
+-- Generic Transformations
+-- =============================================================================
+
+increase' :: Float -> Company -> Company
+increase' k = everywhere (mkT (incS k))
+
+mkT :: (Typeable a, Typeable b) => (b -> b) -> a -> a
+mkT f = case cast f of 
+            Just g -> g
+            Nothing -> id
+
 -- Apply a transformation everywhere, bottom-up
 everywhere :: Term a => (forall b. Term b => b -> b) -> a -> a
 everywhere f x = f (gmapT (everywhere f) x)
@@ -222,7 +234,9 @@ flatD d (D n m us) = D n m (concatMap unwrap us)
         unwrap (DU (D d' m us)) | d == d' = PU m : us
         unwrap u = [u]
 
+-- =============================================================================
 -- Generic Queries
+-- =============================================================================
 
 salaryBill :: Company -> Float
 salaryBill = everything (+) (0 `mkQ` billS)
@@ -256,7 +270,10 @@ x `orElse` y = case x of
     Just _ -> x
     Nothing -> y
 
+-- =============================================================================
 -- Monadic Transformations
+-- =============================================================================
+
 mkM :: (Typeable a, Typeable b, Typeable (m a), Typeable (m b), Monad m)
     => (b -> m b) -> a -> m a
 mkM f = case cast f of
